@@ -19,32 +19,36 @@ class MCP_ChatBot:
         self.available_tools: List[dict] = []
 
     async def process_query(self, query):
-        messages = [{'role':'user', 'content':query}]
-        response = self.groq.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=messages,
-            tools=self.available_tools,
-            max_tokens=2024
-        )
-        process_query = True
-        while process_query:
-            assistant_content = []
+        messages = [
+            {'role': 'system', 'content': 'You have access to tools. Use them when needed to answer questions. Always call tools when the user asks for information that requires external data or computation.'},
+            {'role':'user', 'content':query}
+        ]
+        
+        while True:
+            response = self.groq.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=messages,
+                tools=self.available_tools,
+                max_tokens=2024
+            )
+            
             choice = response.choices[0]
             message = choice.message
             
+            # Add assistant's response to messages
             if hasattr(message, 'content') and message.content:
-                print(message.content)
-                assistant_content.append({'role': 'assistant', 'content': message.content})
-                if not hasattr(message, 'tool_calls') or not message.tool_calls:
-                    process_query = False
-                    
+                print(f"\nAssistant: {message.content}")
+                messages.append({'role': 'assistant', 'content': message.content})
+                break  # No tool calls, conversation complete
+                
             if hasattr(message, 'tool_calls') and message.tool_calls:
+                # Add assistant's tool call to messages
+                messages.append({'role': 'assistant', 'content': None, 'tool_calls': message.tool_calls})
+                
+                # Process each tool call
                 for tool_call in message.tool_calls:
-                    assistant_content.append({'role': 'assistant', 'content': None, 'tool_calls': [tool_call]})
-                    messages.append({'role':'assistant', 'content': None, 'tool_calls': [tool_call]})
-                    tool_id = tool_call.id
-                    tool_args = tool_call.function.arguments
                     tool_name = tool_call.function.name
+                    tool_args = tool_call.function.arguments
                     
                     # Parse tool arguments if they're a string
                     if isinstance(tool_args, str):
@@ -53,13 +57,23 @@ class MCP_ChatBot:
                             tool_args = json.loads(tool_args)
                         except json.JSONDecodeError:
                             tool_args = {}
-    
-                    print(f"Calling tool {tool_name} with args {tool_args}")
                     
-                    # Call a tool
-                    #result = execute_tool(tool_name, tool_args): not anymore needed
-                                        # tool invocation through the client session
+                    # Ensure tool_args is a proper dictionary
+                    if not isinstance(tool_args, dict):
+                        tool_args = {}
+                    
+                    # Fix parameter types for common issues
+                    if 'limit' in tool_args and isinstance(tool_args['limit'], str):
+                        try:
+                            tool_args['limit'] = int(tool_args['limit'])
+                        except ValueError:
+                            tool_args['limit'] = 5  # Default value
+                    
+                    print(f"\nCalling tool: {tool_name} with args: {tool_args}")
+                    
+                    # Call the tool
                     result = await self.session.call_tool(tool_name, arguments=tool_args)
+                    
                     # Extract the text content from the result
                     if hasattr(result, 'content') and hasattr(result.content, 'text'):
                         content_text = result.content.text
@@ -68,23 +82,18 @@ class MCP_ChatBot:
                     else:
                         content_text = str(result)
                     
-                    messages.append({"role": "user", 
-                                      "content": f"Tool result: {content_text}"})
-                    response = self.groq.chat.completions.create(
-                        model="llama3-8b-8192",
-                        messages=messages,
-                        tools=self.available_tools,
-                        max_tokens=2024
-                    )
+                    print(f"Tool result: {content_text}")
                     
-                    choice = response.choices[0]
-                    message = choice.message
-                    if hasattr(message, 'content') and message.content and not hasattr(message, 'tool_calls'):
-                        print(message.content)
-                        process_query = False
+                    # Add tool result to messages
+                    messages.append({"role": "user", "content": f"Tool result: {content_text}"})
+                
+                # Continue the loop to get the final response (after all tool calls)
+                # But limit to prevent infinite loops
+                if len(messages) > 10:  # Safety limit
+                    print("\nReached conversation limit, ending here.")
+                    break
+                continue
 
-    
-    
     async def chat_loop(self):
         """Run an interactive chat loop"""
         print("\nMCP Chatbot Started!")
@@ -130,6 +139,24 @@ class MCP_ChatBot:
                         "parameters": tool.inputSchema
                     }
                 } for tool in response.tools]
+                
+                # Ensure tools are in the correct format for Groq
+                for tool in self.available_tools:
+                    # Ensure parameters has required fields
+                    if 'parameters' in tool['function']:
+                        if 'type' not in tool['function']['parameters']:
+                            tool['function']['parameters']['type'] = 'object'
+                        if 'properties' not in tool['function']['parameters']:
+                            tool['function']['parameters']['properties'] = tool['function']['parameters'].get('properties', {})
+                
+                # Debug: Print the actual tool format being sent to Groq
+                print(f"\nTool format being sent to Groq:")
+                for i, tool in enumerate(self.available_tools):
+                    print(f"Tool {i+1}: {tool['function']['name']}")
+                    print(f"  Parameters: {tool['function']['parameters']}")
+                    print()
+                
+                print(f"Available tools: {[tool['function']['name'] for tool in self.available_tools]}")
     
                 await self.chat_loop()
 
