@@ -9,11 +9,16 @@ DATA_DIR = "research_papers"
 # Initialize FastMCP server
 mcp = FastMCP("academic_assistant")
 
+def _sanitize_topic(topic: str) -> str:
+    """Make topic safe for folder names."""
+    return topic.strip().lower().replace(" ", "_")
+
+# -------- Tool 1: Fetch Papers -------- #
 @mcp.tool()
 def fetch_papers(topic: str, limit: int = 5) -> Dict[str, str]:
     """
-    Fetch papers from Arxiv on a given topic.
-    Returns a dictionary: paper_id -> paper_title
+    Fetch papers from arXiv on a given topic.
+    Returns: paper_id -> paper_title
     """
     client = arxiv.Client()
     search_query = arxiv.Search(
@@ -23,7 +28,7 @@ def fetch_papers(topic: str, limit: int = 5) -> Dict[str, str]:
     )
     results = client.results(search_query)
 
-    topic_dir = os.path.join(DATA_DIR, topic.lower().replace(" ", "_"))
+    topic_dir = os.path.join(DATA_DIR, _sanitize_topic(topic))
     os.makedirs(topic_dir, exist_ok=True)
     json_file = os.path.join(topic_dir, "papers.json")
 
@@ -33,10 +38,10 @@ def fetch_papers(topic: str, limit: int = 5) -> Dict[str, str]:
     except (FileNotFoundError, json.JSONDecodeError):
         papers_data = {}
 
-    paper_summary = {}
+    summary = {}
     for paper in results:
         pid = paper.get_short_id()
-        paper_summary[pid] = paper.title
+        summary[pid] = paper.title
         papers_data[pid] = {
             "title": paper.title,
             "authors": [a.name for a in paper.authors],
@@ -48,12 +53,14 @@ def fetch_papers(topic: str, limit: int = 5) -> Dict[str, str]:
     with open(json_file, "w") as f:
         json.dump(papers_data, f, indent=2)
 
-    return paper_summary
+    return summary
 
+
+# -------- Tool 2: Get Paper Details -------- #
 @mcp.tool()
 def get_paper_details(paper_id: str) -> Dict[str, str]:
     """
-    Retrieve essential details of a paper by ID.
+    Retrieve details of a paper by ID.
     Returns title, authors, abstract, and PDF link.
     """
     if not os.path.exists(DATA_DIR):
@@ -78,17 +85,61 @@ def get_paper_details(paper_id: str) -> Dict[str, str]:
 
     return {"error": f"No information found for paper {paper_id}."}
 
+
+# -------- Tool 3: Summarize Topic (Optional but Recommended) -------- #
 @mcp.tool()
-def compute_math(expression: str) -> str:
+def summarize_topic(topic: str, limit: int = 5) -> Dict[str, list]:
     """
-    Safely compute a simple math expression.
-    Example: '2 + 3 * 4'
+    Fetch top N papers on a topic and return a short summary for each.
+    No local saving required.
+    """
+    client = arxiv.Client()
+    search_query = arxiv.Search(
+        query=topic,
+        max_results=limit,
+        sort_by=arxiv.SortCriterion.Relevance
+    )
+    results = client.results(search_query)
+
+    summaries = []
+    for paper in results:
+        abstract = paper.summary or ""
+        short_summary = ". ".join(abstract.split(". ")[:3]) + "..."
+        summaries.append(f"{paper.title} → {short_summary}")
+
+    return {"summary": summaries}
+
+
+@mcp.tool()
+def write_to_file(filename: str, content: str) -> str:
+    """
+    Write content to a file.
+    
+    Args:
+        filename: Name of the file to write to
+        content: Content to write to the file
+        
+    Returns:
+        Success message or error message
     """
     try:
-        result = eval(expression, {"__builtins__": {}})
-        return str(result)
+        # Clean up the content by removing excessive whitespace
+        lines = content.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped:  # Only add non-empty lines
+                cleaned_lines.append(stripped)
+        
+        # Join with single newlines and add one final newline
+        cleaned_content = '\n'.join(cleaned_lines) + '\n'
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(cleaned_content)
+        return f"Successfully wrote cleaned content to {filename}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error writing to file: {str(e)}"
+
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
