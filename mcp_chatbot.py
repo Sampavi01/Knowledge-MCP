@@ -17,34 +17,27 @@ class ToolDefinition(TypedDict):
 class MCP_ChatBot:
 
     def __init__(self):
-        # Initialize session and client objects
-        self.sessions: List[ClientSession] = [] # new
-        self.exit_stack = AsyncExitStack() # new
+        self.sessions: List[ClientSession] = []
+        self.exit_stack = AsyncExitStack()
         self.groq = Groq()
-        self.available_tools: List[ToolDefinition] = [] # new
-        self.tool_to_session: Dict[str, ClientSession] = {} # new
-
+        self.available_tools: List[ToolDefinition] = []
+        self.tool_to_session: Dict[str, ClientSession] = {}
 
     async def connect_to_server(self, server_name: str, server_config: dict) -> None:
-        """Connect to a single MCP server."""
         try:
             server_params = StdioServerParameters(**server_config)
-            stdio_transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
-            ) # new
+            stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
             read, write = stdio_transport
-            session = await self.exit_stack.enter_async_context(
-                ClientSession(read, write)
-            ) # new
+            session = await self.exit_stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
             self.sessions.append(session)
-            
-            # List available tools for this session
+
+            # List available tools
             response = await session.list_tools()
             tools = response.tools
             print(f"\nConnected to {server_name} with tools:", [t.name for t in tools])
-            
-            for tool in tools: # new
+
+            for tool in tools:
                 self.tool_to_session[tool.name] = session
                 self.available_tools.append({
                     "name": tool.name,
@@ -54,27 +47,24 @@ class MCP_ChatBot:
         except Exception as e:
             print(f"Failed to connect to {server_name}: {e}")
 
-    async def connect_to_servers(self): # new
-        """Connect to all configured MCP servers."""
+    async def connect_to_servers(self):
         try:
             with open("server_config.json", "r") as file:
                 data = json.load(file)
-            
+
             servers = data.get("mcpServers", {})
-            
             for server_name, server_config in servers.items():
                 await self.connect_to_server(server_name, server_config)
         except Exception as e:
             print(f"Error loading server configuration: {e}")
             raise
-    
+
     async def process_query(self, query):
         messages = [
-            {'role': 'system', 'content': 'You are a helpful assistant with access to tools. When you need to use tools, call them directly. Do not output tool call instructions as text.'},
-            {'role':'user', 'content':query}
+            {'role': 'system', 'content': 'You are a helpful assistant with access to tools. Call tools directly.'},
+            {'role': 'user', 'content': query}
         ]
-        
-        # Convert tools to Groq format
+
         groq_tools = [{
             "type": "function",
             "function": {
@@ -83,52 +73,82 @@ class MCP_ChatBot:
                 "parameters": tool["input_schema"]
             }
         } for tool in self.available_tools]
-        
+
         response = self.groq.chat.completions.create(
             model="llama3-70b-8192",
             messages=messages,
             tools=groq_tools,
             max_tokens=2024
         )
-        
+
         process_query = True
         while process_query:
             choice = response.choices[0]
             message = choice.message
-            
+
+            # Normal assistant text output
             if hasattr(message, 'content') and message.content:
                 print(message.content)
                 process_query = False
+
+            # Tool calls from assistant
             elif hasattr(message, 'tool_calls') and message.tool_calls:
-                # Process tool calls
+                # Preserve assistant message with tool_calls
+                assistant_tool_calls = []
+                for tc in message.tool_calls:
+                    assistant_tool_calls.append({
+                        "id": getattr(tc, "id", None),
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    })
+                messages.append({
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": assistant_tool_calls,
+                })
+
+                # Execute each tool
                 for tool_call in message.tool_calls:
                     tool_name = tool_call.function.name
-                    tool_args = tool_call.function.arguments
-                    
-                    # Parse tool arguments if they're a string
-                    if isinstance(tool_args, str):
+                    tool_args_raw = tool_call.function.arguments
+
+                    # Parse arguments safely
+                    parsed_args = tool_args_raw
+                    if isinstance(parsed_args, str):
                         try:
-                            tool_args = json.loads(tool_args)
+                            parsed_args = json.loads(parsed_args)
                         except json.JSONDecodeError:
-                            tool_args = {}
-                    
-                    print(f"Calling tool {tool_name} with args {tool_args}")
-                    
-                    # Call the tool
-                    session = self.tool_to_session[tool_name]
-                    result = await session.call_tool(tool_name, arguments=tool_args)
-                    
-                    # Extract content from result
-                    if hasattr(result, 'content') and hasattr(result.content, 'text'):
-                        content_text = result.content.text
-                    elif hasattr(result, 'content'):
-                        content_text = str(result.content)
+                            parsed_args = {}
+
+                    print(f"Calling tool {tool_name} with args {parsed_args}")
+
+                    try:
+                        session = self.tool_to_session[tool_name]
+                        result = await session.call_tool(tool_name, arguments=parsed_args)
+                    except Exception as e:
+                        print(f"Tool {tool_name} failed: {e}")
+                        process_query = False
+                        break
+
+                    # Extract result content safely
+                    if hasattr(result, 'content'):
+                        if isinstance(result.content, dict):
+                            content_text = json.dumps(result.content, indent=2)
+                        else:
+                            content_text = str(result.content)
                     else:
                         content_text = str(result)
-                    
-                    messages.append({"role": "user", "content": f"Tool result: {content_text}"})
-                
-                # Get next response from Groq
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": getattr(tool_call, "id", None),
+                        "content": content_text,
+                    })
+
+                # Get next model response
                 response = self.groq.chat.completions.create(
                     model="llama3-70b-8192",
                     messages=messages,
@@ -138,42 +158,36 @@ class MCP_ChatBot:
             else:
                 process_query = False
 
-    
-    
     async def chat_loop(self):
-        """Run an interactive chat loop"""
         print("\nMCP Chatbot Started!")
         print("Type your queries or 'quit' to exit.")
-        
+
         while True:
             try:
                 query = input("\nQuery: ").strip()
-        
                 if query.lower() == 'quit':
                     break
-                    
+
                 await self.process_query(query)
                 print("\n")
-                    
             except Exception as e:
-                print(f"\nError: {str(e)}")
-    
-    async def cleanup(self): # new
-        """Cleanly close all resources using AsyncExitStack."""
+                print(f"\nError: {e}")
+
+    async def cleanup(self):
         await self.exit_stack.aclose()
 
 
 async def main():
     chatbot = MCP_ChatBot()
     try:
-        # the mcp clients and sessions are not initialized using "with"
-        # like in the previous lesson
-        # so the cleanup should be manually handled
-        await chatbot.connect_to_servers() # new! 
+        await chatbot.connect_to_servers()
         await chatbot.chat_loop()
     finally:
-        await chatbot.cleanup() #new! 
+        await chatbot.cleanup()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nChatbot exited by user")
