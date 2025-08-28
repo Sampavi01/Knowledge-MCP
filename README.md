@@ -9,60 +9,49 @@ Groq‑powered MCP chatbot with 3 servers: 🔬 Research, 📁 Filesystem, 🌐 
 - 📝 Clean file writing (e.g., `results.txt`)
 - 🖥️ Streamlit viewer for saved papers
 
+## 🎥 Demo
+![MCP Chatbot Demo](ezgif.com-speed%20(2).gif)
+
+
+
 ## ⚡ Quick Start (copy each command one-by-one)
 
-1) Clone
 ```bash
+# Clone repository
 git clone https://github.com/Sampavi01/Knowledge-MCP.git
-```
-
-2) Enter folder
-```bash
+# Enter project folder
 cd Knowledge-MCP
 ```
-
-3) Create virtual env (uv)
 ```bash
+# Create virtual environment (uv)
 uv venv
-```
-
-4) Activate virtual env (Windows PowerShell)
-```bash
+# Activate venv (Windows PowerShell)
 .venv\\Scripts\\activate
-```
-
-5) Activate virtual env (macOS/Linux)
-```bash
+# Activate venv (macOS/Linux)
 source .venv/bin/activate
 ```
-
-6) Install dependencies (requirements.txt)
 ```bash
+# Install Python dependencies
 pip install -r requirements.txt
 ```
 
-7) Set API key (Windows PowerShell)
 ```bash
+# Set API key (Windows PowerShell)
 $env:GROQ_API_KEY="your_groq_api_key_here"
-```
-
-8) Set API key (macOS/Linux)
-```bash
+# Set API key (macOS/Linux)
 export GROQ_API_KEY=your_groq_api_key_here
 ```
 
-9) Run chatbot
 ```bash
+# Run MCP chatbot
 uv run mcp_chatbot.py
 ```
-
-10) Run research server
 ```bash
+# Run research MCP server
 uv run mcp_server.py
 ```
-
-11) Run Streamlit UI
 ```bash
+# Launch Streamlit UI
 uv run streamlit run streamlit_app.py
 ```
 
