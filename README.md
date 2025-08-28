@@ -12,10 +12,7 @@ Groq‑powered MCP chatbot with 3 servers: 🔬 Research, 📁 Filesystem, 🌐 
 ## 🎥 Demo
 ![MCP Chatbot Demo](ezgif.com-speed%20(2).gif)
 
-
-
 ## ⚡ Quick Start (copy each command one-by-one)
-
 ```bash
 # Clone repository
 git clone https://github.com/Sampavi01/Knowledge-MCP.git
@@ -34,14 +31,12 @@ source .venv/bin/activate
 # Install Python dependencies
 pip install -r requirements.txt
 ```
-
 ```bash
 # Set API key (Windows PowerShell)
 $env:GROQ_API_KEY="your_groq_api_key_here"
 # Set API key (macOS/Linux)
 export GROQ_API_KEY=your_groq_api_key_here
 ```
-
 ```bash
 # Run MCP chatbot
 uv run mcp_chatbot.py
@@ -54,19 +49,18 @@ uv run mcp_server.py
 # Launch Streamlit UI
 uv run streamlit run streamlit_app.py
 ```
-
 ## 📂 Structure
 ```
 MCP Project/
 ├─ 🚀 mcp_chatbot.py
 ├─ 🔬 mcp_server.py
+├─ 🤝 mcp_client.py
 ├─ ⚙️ server_config.json
 ├─ 🖥️ streamlit_app.py
 ├─ 📦 pyproject.toml
 ├─ 📚 research_papers/
 └─ 📖 README.md
 ```
-
 ## 📝 Notes
 - `research_papers/` is created when `fetch_papers(topic, limit)` runs.
 - `summarize_topic(...)` returns data but doesn’t write files.
