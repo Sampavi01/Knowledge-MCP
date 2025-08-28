@@ -1,0 +1,22 @@
+[project]
+name = "mcp-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.64.0",
+    "arxiv>=2.2.0",
+    "groq>=0.31.0",
+    "mcp",
+    "nest-asyncio>=1.6.0",
+    "streamlit",
+    "wikipedia>=1.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "mcp",
+]
+
+

@@ -86,7 +86,7 @@ def get_paper_details(paper_id: str) -> Dict[str, str]:
     return {"error": f"No information found for paper {paper_id}."}
 
 
-# -------- Tool 3: Summarize Topic (Optional but Recommended) -------- #
+# -------- Tool 3: Summarize Topic  -------- #
 @mcp.tool()
 def summarize_topic(topic: str, limit: int = 5) -> Dict[str, list]:
     """

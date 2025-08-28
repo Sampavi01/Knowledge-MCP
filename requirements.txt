@@ -1,0 +1,8 @@
+arxiv>=2.2.0
+anthropic>=0.64.0
+groq>=0.31.0
+mcp
+nest-asyncio>=1.6.0
+python-dotenv>=1.0.0
+streamlit>=1.36.0
+wikipedia>=1.4.0
